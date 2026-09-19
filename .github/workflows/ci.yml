@@ -22,9 +22,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 26
           cache: npm
 
+      - name: Check Node.js version
+        run: |
+          node -v
+          npm -v
+          
       - name: Install dependencies
         run: npm ci
 
