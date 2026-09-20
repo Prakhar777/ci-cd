@@ -9,59 +9,109 @@ on:
     branches:
       - main
 
-jobs:
+permissions:
+  id-token: write
+  contents: read
 
+jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 26
           cache: npm
 
+      # 3. Verify Node and npm versions
       - name: Check Node.js version
         run: |
           node -v
           npm -v
 
+      # 4. Install dependencies
       - name: Install dependencies
         run: npm ci
 
+      # 5. Run ESLint
       - name: Run lint
         run: npm run lint
 
+      # 6. Run tests
       - name: Run tests
         run: npm test
 
+      # 7. Build React application
       - name: Build application
         run: npm run build
 
+      # 8. Upload production build as artifact
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: react-build
           path: dist/
 
-
   deploy:
     runs-on: ubuntu-latest
+
+    # Deploy only if the build job succeeds
     needs: build
+
+    # Associate this job with GitHub's staging environment
     environment: staging
 
     steps:
+      # 9. Temporarily inspect GitHub OIDC claims
+      #    We print only sub and aud, never the actual token.
+      - name: Inspect OIDC claims
+        run: |
+          set -euo pipefail
+
+          token="$(curl -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
+            | jq -r '.value')"
+
+          export OIDC_TOKEN="$token"
+
+          python - <<'PY'
+          import os
+          import json
+          import base64
+
+          token = os.environ["OIDC_TOKEN"]
+
+          payload = token.split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+
+          claims = json.loads(
+              base64.urlsafe_b64decode(payload)
+          )
+
+          print(json.dumps({
+              "sub": claims.get("sub"),
+              "aud": claims.get("aud")
+          }, indent=2))
+          PY
+
+      # 10. Download build artifact from the build job
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: react-build
 
+      # 11. Verify downloaded files
       - name: Inspect downloaded artifact
         run: |
           echo "Files downloaded:"
           ls -la
+
           echo "Contents:"
           find . -maxdepth 3 -type f
