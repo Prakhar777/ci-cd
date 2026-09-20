@@ -29,7 +29,7 @@ jobs:
           node-version: 26
           cache: npm
 
-      # 3. Verify Node and npm versions
+      # 3. Check versions
       - name: Check Node.js version
         run: |
           node -v
@@ -39,19 +39,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 5. Run ESLint
+      # 5. Lint
       - name: Run lint
         run: npm run lint
 
-      # 6. Run tests
+      # 6. Tests
       - name: Run tests
         run: npm test
 
-      # 7. Build React application
+      # 7. Build
       - name: Build application
         run: npm run build
 
-      # 8. Upload production build as artifact
+      # 8. Upload production build
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -61,53 +61,34 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # Deploy only if the build job succeeds
+    # Deploy job starts only after build succeeds
     needs: build
 
-    # Associate this job with GitHub's staging environment
+    # This is important because our IAM trust policy
+    # specifically trusts the "staging" GitHub environment.
     environment: staging
 
     steps:
-      # 9. Temporarily inspect GitHub OIDC claims
-      #    We print only sub and aud, never the actual token.
-      - name: Inspect OIDC claims
+      # 9. Configure AWS credentials using GitHub OIDC
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::597787441762:role/S3StagingDeployment
+          aws-region: ap-south-1
+          role-session-name: GitHubActionsStagingDeploy
+
+      # 10. Verify AWS authentication
+      - name: Verify AWS identity
         run: |
-          set -euo pipefail
+          aws sts get-caller-identity
 
-          token="$(curl -sS \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" \
-            | jq -r '.value')"
-
-          export OIDC_TOKEN="$token"
-
-          python - <<'PY'
-          import os
-          import json
-          import base64
-
-          token = os.environ["OIDC_TOKEN"]
-
-          payload = token.split(".")[1]
-          payload += "=" * (-len(payload) % 4)
-
-          claims = json.loads(
-              base64.urlsafe_b64decode(payload)
-          )
-
-          print(json.dumps({
-              "sub": claims.get("sub"),
-              "aud": claims.get("aud")
-          }, indent=2))
-          PY
-
-      # 10. Download build artifact from the build job
+      # 11. Download the React build artifact
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: react-build
 
-      # 11. Verify downloaded files
+      # 12. Inspect downloaded artifact
       - name: Inspect downloaded artifact
         run: |
           echo "Files downloaded:"
