@@ -29,7 +29,7 @@ jobs:
           node-version: 26
           cache: npm
 
-      # 3. Check versions
+      # 3. Check Node.js and npm versions
       - name: Check Node.js version
         run: |
           node -v
@@ -39,19 +39,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 5. Lint
+      # 5. Run ESLint
       - name: Run lint
         run: npm run lint
 
-      # 6. Tests
+      # 6. Run tests
       - name: Run tests
         run: npm test
 
-      # 7. Build
+      # 7. Build React application
       - name: Build application
         run: npm run build
 
-      # 8. Upload production build
+      # 8. Upload production build as artifact
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -61,11 +61,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # Deploy job starts only after build succeeds
+    # Deploy only after build succeeds
     needs: build
 
-    # This is important because our IAM trust policy
-    # specifically trusts the "staging" GitHub environment.
+    # GitHub Environment
+    # This must match the environment in the IAM trust policy
     environment: staging
 
     steps:
@@ -82,7 +82,7 @@ jobs:
         run: |
           aws sts get-caller-identity
 
-      # 11. Download the React build artifact
+      # 11. Download React build artifact
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
@@ -96,3 +96,8 @@ jobs:
 
           echo "Contents:"
           find . -maxdepth 3 -type f
+
+      # 13. Deploy React application to S3
+      - name: Deploy to S3
+        run: |
+          aws s3 sync . s3://artifacts-597787441762-ap-south-1-an --delete
