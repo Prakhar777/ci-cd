@@ -9,13 +9,18 @@ on:
     branches:
       - main
 
-permissions:
-  id-token: write
-  contents: read
-
 jobs:
+  # ============================================================
+  # CI JOB
+  # Runs for both:
+  # 1. Pull Requests → main
+  # 2. Pushes → main
+  # ============================================================
   build:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
 
     steps:
       # 1. Checkout repository
@@ -58,15 +63,27 @@ jobs:
           name: react-build
           path: dist/
 
+
+  # ============================================================
+  # CD JOB
+  # Runs ONLY after a successful build
+  # AND only for pushes to main.
+  # ============================================================
   deploy:
     runs-on: ubuntu-latest
 
-    # Deploy only after build succeeds
     needs: build
 
+    # Only deploy when the workflow was triggered by
+    # a direct push to main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
     # GitHub Environment
-    # This must match the environment in the IAM trust policy
     environment: staging
+
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       # 9. Configure AWS credentials using GitHub OIDC
@@ -82,7 +99,7 @@ jobs:
         run: |
           aws sts get-caller-identity
 
-      # 11. Download React build artifact
+      # 11. Download build artifact
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
